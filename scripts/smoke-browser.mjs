@@ -155,6 +155,16 @@ try {
     const canvasOverflow = await assertNoHorizontalOverflow(page, `${viewport.name} canvas catalog`)
     await page.screenshot({ path: join(artifactDir, `${viewport.name}-canvas.png`) })
 
+    // Keep the catalog inside the viewport when switching between its fixed
+    // mobile overlay and desktop rail, with the global 125% zoom still active.
+    for (const size of [{ width: 390, height: 844 }, { width: 1280, height: 800 }, viewport]) {
+      await page.setViewportSize({ width: size.width, height: size.height })
+      await waitForStableLayout(page, [catalog], `${viewport.name} resized catalog readiness`)
+      await assertVisibleAndUnobscured(page, catalog, `${viewport.name} catalog at ${size.width}px`)
+      await assertNoHorizontalOverflow(page, `${viewport.name} resized canvas`)
+    }
+
+
     const libraryUrl = `${baseUrl}/?section=library`
     await page.goto(libraryUrl, { waitUntil: "domcontentloaded" })
     const libraryHeader = page.locator("header").first()
