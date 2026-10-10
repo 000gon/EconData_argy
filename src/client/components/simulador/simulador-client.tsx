@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import {
   CATALOGO,
   escenarioAQueryString,
@@ -186,7 +187,7 @@ export function SimuladorClient() {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <header style={{ maxWidth: 1280, margin: "0 auto 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <a
+          <Link
             href="/"
             style={{
               fontSize: 11,
@@ -198,7 +199,7 @@ export function SimuladorClient() {
             }}
           >
             ← La Pizarra
-          </a>
+          </Link>
         </div>
         <h1
           style={{
