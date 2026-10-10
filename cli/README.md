@@ -5,22 +5,18 @@
 `lapizarra` es el cliente de línea de comandos oficial de [La Pizarra](https://lapizarra.ar). Consulta las mismas fuentes públicas que la web (BCRA, INDEC, DolarAPI, argentinadatos.com, Rosario, BYMA Data, Yahoo Finance) y las formatea para verlas cómodo — o piperarlas a `jq`, scripts o dashboards de terminal.
 
 ```bash
-$ npx lapizarra dolar
+$ node dist/index.js dolar
 ```
 
-## Instalación
+## Instalación y ejecución
 
-Sin instalar nada global — `npx` lo baja y lo ejecuta:
-
-```bash
-npx lapizarra dolar
-```
-
-O instalación global:
+El CLI aún no se distribuye desde npm. Para usarlo desde el repositorio:
 
 ```bash
-npm install -g lapizarra-cli
-lapizarra --help
+cd cli
+npm ci
+npm run build
+node dist/index.js dolar
 ```
 
 Requiere **Node.js 20+** (usa `fetch` nativo).

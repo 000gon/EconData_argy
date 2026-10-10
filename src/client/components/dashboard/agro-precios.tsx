@@ -97,7 +97,7 @@ export function AgroPrecios() {
       <div style={{ padding: "8px 12px", fontSize: 9, color: "var(--text-dim)", lineHeight: 1.6 }}>
         {data.tipoCambio != null && <>Tipo de cambio BNA divisas: ${miles(data.tipoCambio, 1)}. </>}
         <strong style={{ color: "var(--text-mute)" }}>FOB vs CBOT</strong> = cuánto por debajo del precio de Chicago
-        cotiza el FOB argentino (el "descuento" que reflejan retenciones y logística).
+        cotiza el FOB argentino (el &quot;descuento&quot; que reflejan retenciones y logística).
         {resp.stale && <span style={{ color: "var(--negative)" }}> · dato de la última lectura buena (fuente caída).</span>}
         <div style={{ marginTop: 3, color: "var(--text-mute)" }}>
           Fuente: {resp.source} · datos {data.fecha}
