@@ -20,7 +20,11 @@ async function assertVisibleAndUnobscured(page, locator, label) {
   const viewport = page.viewportSize()
   assert.ok(box && viewport, `${label} has no layout box`)
   assert.ok(box.width > 0 && box.height > 0, `${label} has no visible area`)
-  assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, `${label} is clipped at ${JSON.stringify(box)} in ${JSON.stringify(viewport)}`)
+  const geometryDetails = await locator.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { position: style.position, left: style.left, right: style.right, width: style.width, maxWidth: style.maxWidth, zoom: getComputedStyle(document.documentElement).zoom, innerWidth: window.innerWidth }
+  })
+  assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, `${label} is clipped at ${JSON.stringify(box)} in ${JSON.stringify(viewport)}; styles=${JSON.stringify(geometryDetails)}`)
   await locator.evaluate((element, name) => {
     const rect = element.getBoundingClientRect()
     // Keep the four probes inside rounded borders; a 2px probe can land on a
@@ -137,23 +141,36 @@ try {
     // Resolve the catalog only after any drawer navigation. A locator created
     // before the route/state transition can observe the old hidden aside.
     const resolveCatalog = async () => {
-      let current = page.locator("aside").filter({ has: page.getByText(/^32 tarjetas programables$/) }).first()
+      let current = page.locator("aside").filter({ has: page.getByText(/^33 tarjetas programables$/) }).first()
       if (!(await current.isVisible())) {
         const freshCatalogButton = page.getByRole("button", { name: "Tarjetas", exact: true }).last()
         await freshCatalogButton.click()
-        current = page.locator("aside").filter({ has: page.getByText(/^32 tarjetas programables$/) }).first()
+        current = page.locator("aside").filter({ has: page.getByText(/^33 tarjetas programables$/) }).first()
       }
-      await current.getByText(/^32 tarjetas programables$/).waitFor({ state: "visible" })
+      await current.getByText(/^33 tarjetas programables$/).waitFor({ state: "visible" })
       return current
     }
     const catalog = await resolveCatalog()
     await waitForStableLayout(page, [catalog], `${viewport.name} catalog readiness`)
     const catalogGeometry = await assertVisibleAndUnobscured(page, catalog, `${viewport.name} catalog`)
-    const catalogCount = catalog.getByText(/^32 tarjetas programables$/)
+    const catalogCount = catalog.getByText(/^33 tarjetas programables$/)
     await catalogCount.waitFor({ state: "visible" })
-    assert.equal(await catalogCount.textContent(), "32 tarjetas programables", `${viewport.name} catalog count`)
+    assert.equal(await catalogCount.textContent(), "33 tarjetas programables", `${viewport.name} catalog count`)
     const canvasOverflow = await assertNoHorizontalOverflow(page, `${viewport.name} canvas catalog`)
     await page.screenshot({ path: join(artifactDir, `${viewport.name}-canvas.png`) })
+
+    // Keep the catalog inside the viewport when switching between its fixed
+    // mobile overlay and desktop rail, with the global 125% zoom still active.
+    for (const size of [{ width: 390, height: 844 }, { width: 1280, height: 800 }, viewport]) {
+      await page.setViewportSize({ width: size.width, height: size.height })
+      // The sidebar animates its width for 200ms; the grid ResizeObserver
+      // follows that transition independently of the fixed catalog.
+      await page.waitForTimeout(250)
+      await waitForStableLayout(page, [catalog, header, canvasControls, page.locator(".react-grid-layout").first()], `${viewport.name} resized catalog readiness`)
+      await assertVisibleAndUnobscured(page, catalog, `${viewport.name} catalog at ${size.width}px`)
+      await assertNoHorizontalOverflow(page, `${viewport.name} resized canvas`)
+    }
+
 
     const libraryUrl = `${baseUrl}/?section=library`
     await page.goto(libraryUrl, { waitUntil: "domcontentloaded" })
@@ -206,7 +223,7 @@ try {
     results.push({
       viewport,
       routes: {
-        canvas: { catalogCount: 32, catalogGeometry, overflow: canvasOverflow },
+        canvas: { catalogCount: 33, catalogGeometry, overflow: canvasOverflow },
         library: { heading: "Biblioteca de datos", headerGeometry: libraryHeaderGeometry, dashboardGeometry: libraryDashboardGeometry, overflow: libraryOverflow },
         drawer: { openGeometry: drawerOpenGeometry, libraryHeading: Boolean(drawerLibraryHeading), canvasHeading: Boolean(drawerCanvasHeading) },
         libraryFocus: { ticker: "YPFD", cardId: "acciones", overflow: focusedLibraryOverflow },

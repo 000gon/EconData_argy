@@ -9,8 +9,10 @@ import {
 import { ForoActivo } from "./foro-activo"
 import { AssetScreener } from "./screener-activos"
 import { TabBonos } from "./tab-bonos"
+import { CapPanel } from "./cap-panel"
 import { ajustarPolinomio, gradoSugerido, muestrearCurva, residuos } from "@/lib/curve-fit"
 import { StockHeatmap } from "./stock-heatmap"
+import { InfoTooltip } from "@/client/components/ui/info-tooltip"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -80,10 +82,13 @@ function SubTabs({ active, onChange }: { active: string; onChange: (k: string) =
 
 // ── KPI card ───────────────────────────────────────────────────────────────────
 
-function KPI({ label, value, unit, valueColor = "var(--text)", sub }: { label: string; value: string | null; unit?: string; valueColor?: string; sub?: string }) {
+function KPI({ label, value, unit, valueColor = "var(--text)", sub, termId }: { label: string; value: string | null; unit?: string; valueColor?: string; sub?: string; termId?: string }) {
   return (
     <div style={{ flex: "1 1 150px", padding: "10px 14px", background: "var(--bg-row-alt)", border: "1px solid var(--bg-elev-2)", display: "flex", flexDirection: "column", gap: 3 }}>
-      <div style={{ fontSize: 8, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "var(--font-data)" }}>{label}</div>
+      <div style={{ fontSize: 8, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1.5, fontFamily: "var(--font-data)", display: "flex", alignItems: "center", gap: 2 }}>
+        {label}
+        {termId && <InfoTooltip termId={termId} position="bottom" />}
+      </div>
       <div style={{ fontSize: 20, fontWeight: 700, color: valueColor, fontFamily: "var(--font-data)", lineHeight: 1 }}>{value ?? "—"}</div>
       {unit && <div style={{ fontSize: 8, color: "#bbb", fontFamily: "var(--font-data)" }}>{unit}</div>}
       {sub && <div style={{ fontSize: 8, color: "var(--text-dim)", fontFamily: "var(--font-data)" }}>{sub}</div>}
@@ -152,7 +157,7 @@ export function AccionesView({ initialTicker = null }: { initialTicker?: string 
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 1, padding: "12px 14px", background: "var(--bg)", borderBottom: "1px solid var(--bg-elev-2)" }}>
-        <KPI label="Acciones con precio" value={String(mervalTotal)} unit="tickers activos" />
+        <KPI label="Acciones con precio" termId="MERVAL" value={String(mervalTotal)} unit="tickers activos" />
         <KPI label="Mejor del día" value={top5Gain[0] ? top5Gain[0].ticker : null} valueColor="var(--positive)"
           unit={top5Gain[0]?.change1D != null ? `+${fmtPct(top5Gain[0].change1D)}` : undefined} />
         <KPI label="Peor del día" value={top5Loss[0] ? top5Loss[0].ticker : null} valueColor="var(--negative)"
@@ -354,13 +359,13 @@ interface BondRow {
 const DURATION_MINIMA_CURVA = 0.25
 
 /**
- * Nube de bonos con la curva que mejor los describe, y cada punto pintado
- * según de qué lado quedó.
+ * Nube de bonos con la curva que mejor los describe.
  *
- * Sin la curva, el scatter dice dónde cotiza cada bono pero no si eso está
- * bien o mal. Con la curva, un punto VERDE rinde más de lo que le tocaría por
- * su plazo (barato) y uno ROJO rinde menos (caro). Eso es lo que se busca
- * cuando se mira una curva de rendimientos.
+ * Sin la curva, el scatter dice dónde cotiza cada bono pero no de qué lado de
+ * la curva queda. Con la curva, un bono por encima rinde más de lo que le
+ * tocaría por su plazo y uno por debajo, menos. Se muestra esa diferencia y
+ * nada más: sin rótulos barato/caro ni puntos verde/rojo, que se leen como
+ * recomendación (decisión del equipo de finanzas, 2026-09-22).
  *
  * El eje X va como número y no como categoría. Antes iba como categoría, que
  * es el default de Recharts, y por eso los bonos salían espaciados en el orden
@@ -441,7 +446,7 @@ function CurvaAjustada({ titulo, puntos, unidadTasa, etiquetaExtra }: {
                 <div>{unidadTasa}: {fmtPct(d.y)}</div>
                 <div>Duration: {fmtNum(d.x, 2)} años</div>
                 {etiquetaExtra && d.extra && <div>{etiquetaExtra}: {d.extra}</div>}
-                <div style={{ marginTop: 3, color: res >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                <div style={{ marginTop: 3, color: "var(--text)" }}>
                   {res >= 0 ? "▲" : "▼"} {fmtNum(Math.abs(res), 2)} pp {res >= 0 ? "sobre" : "bajo"} la curva
                 </div>
               </div>
@@ -463,11 +468,10 @@ function CurvaAjustada({ titulo, puntos, unidadTasa, etiquetaExtra }: {
           <Scatter
             data={conResiduo}
             isAnimationActive={false}
-            shape={(props: { cx?: number; cy?: number; payload?: { residuo?: number } }) => {
-              const { cx, cy, payload } = props
+            shape={(props: { cx?: number; cy?: number }) => {
+              const { cx, cy } = props
               if (cx == null || cy == null) return <g />
-              const barato = (payload?.residuo ?? 0) >= 0
-              return <circle cx={cx} cy={cy} r={4.5} fill={barato ? "var(--positive)" : "var(--negative)"} />
+              return <circle cx={cx} cy={cy} r={4.5} fill="var(--sky)" />
             }}
           />
         </ScatterChart>
@@ -476,9 +480,8 @@ function CurvaAjustada({ titulo, puntos, unidadTasa, etiquetaExtra }: {
       <div style={{ fontSize: 8, color: "var(--text-mute)", fontFamily: "var(--font-data)", lineHeight: 1.7, marginTop: 4 }}>
         {ajuste ? (
           <>
-            Curva ajustada por mínimos cuadrados, grado {ajuste.grado} · R² {fmtNum(ajuste.r2, 3)} ·{" "}
-            <span style={{ color: "var(--positive)" }}>verde</span> rinde de más para su plazo (barato),{" "}
-            <span style={{ color: "var(--negative)" }}>rojo</span> rinde de menos (caro).
+            Curva ajustada por mínimos cuadrados, grado {ajuste.grado} · R² {fmtNum(ajuste.r2, 3)} · un bono
+            por encima de la curva rinde más de lo que le toca por su plazo; por debajo, menos.
             {excluidos > 0 && (
               <> · {excluidos} {excluidos === 1 ? "instrumento queda" : "instrumentos quedan"} fuera del
               ajuste por vencer en menos de {fmtNum(DURATION_MINIMA_CURVA * 12, 0)} meses: anualizados
@@ -607,9 +610,9 @@ export function BonosView({ initialTicker = null }: { initialTicker?: string | n
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 1, padding: "12px 14px", background: "var(--bg)", borderBottom: "1px solid var(--bg-elev-2)" }}>
         <KPI label="Bonos soberanos" value={String(bonos.length)} unit="hard dollar" />
-        <KPI label="TIR promedio" value={avgTir != null ? fmtPct(avgTir) : null} valueColor="var(--amber)" unit="yield to maturity" />
-        <KPI label="Paridad promedio" value={avgPar != null ? fmtPct(avgPar) : null} valueColor="var(--positive)" unit="% del VN residual" />
-        <KPI label="LECAPs / BONCAPs" value={String(lecaps.length)} unit="instrumentos locales" />
+        <KPI label="TIR promedio" termId="TIR" value={avgTir != null ? fmtPct(avgTir) : null} valueColor="var(--amber)" unit="yield to maturity" />
+        <KPI label="Paridad promedio" termId="PARIDAD" value={avgPar != null ? fmtPct(avgPar) : null} valueColor="var(--positive)" unit="% del VN residual" />
+        <KPI label="LECAPs / BONCAPs" termId="LECAP" value={String(lecaps.length)} unit="instrumentos locales" />
       </div>
 
       {/* Selector por familia de instrumento */}
@@ -701,60 +704,10 @@ export function BonosView({ initialTicker = null }: { initialTicker?: string | n
 
 
       {tab === "lecap" && (
-        <div style={{ padding: 16, background: "var(--bg)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "var(--bg-elev-2)", marginBottom: 1 }}>
-            {/* Curva LECAP */}
-            <div style={{ background: "var(--bg)", padding: 16 }}>
-              <SectionTitle title="Curva LECAP / BONCAP — TEM vs plazo" />
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={lecaps.filter(l => l.tem != null).sort((a, b) => a.diasVencimiento - b.diasVencimiento).map(l => ({ label: l.ticker, dias: l.diasVencimiento, tem: l.tem }))} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="2 4" stroke="var(--bg-elev-2)" />
-                  <XAxis dataKey="dias" stroke="var(--border-hi)" fontSize={9} tick={{ fill: "var(--text-dim)" }} tickFormatter={v => `${v}d`} />
-                  <YAxis stroke="var(--border-hi)" fontSize={9} tick={{ fill: "var(--text-dim)" }} tickFormatter={v => `${v}%`} />
-                  <Tooltip {...tooltipStyle} formatter={(v: unknown) => [`${fmtNum(v as number, 2)}%`, "TEM"]} />
-                  <Line type="monotone" dataKey="tem" stroke="#FFD700" strokeWidth={2} dot={{ r: 3, fill: "#FFD700" }} isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Tabla LECAP */}
-            <div style={{ background: "var(--bg)", padding: 16 }}>
-              <SectionTitle title="Detalle instrumentos" />
-              <div style={{ overflowY: "auto", maxHeight: 240 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-data)", fontSize: 9 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                      {["Ticker", "Tipo", "Vto.", "Días", "Precio", "TEM", "TEA"].map(h => (
-                        <th key={h} style={{ padding: "4px 6px", color: "var(--text-dim)", fontWeight: 400, textAlign: h === "Ticker" || h === "Tipo" ? "left" : "right" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lecaps.sort((a, b) => a.diasVencimiento - b.diasVencimiento).map((l, i) => (
-                      <tr
-                        key={i}
-                        onClick={() => setSelected(prev => prev?.type === "cap" && prev.ticker === l.ticker ? null : { type: "cap", ticker: l.ticker })}
-                        style={{
-                          borderBottom: "1px solid var(--bg-elev-2)",
-                          cursor: "pointer",
-                          background: selected?.type === "cap" && selected.ticker === l.ticker ? "var(--bg-elev-2)" : "transparent",
-                        }}
-                      >
-                        <td style={{ padding: "3px 6px", color: "var(--amber)", fontWeight: 700 }}>{l.ticker}</td>
-                        <td style={{ padding: "3px 6px", color: "var(--text-dim)" }}>{l.tipo}</td>
-                        <td style={{ padding: "3px 6px", color: "var(--text-dim)" }}>{l.vencimiento}</td>
-                        <td style={{ padding: "3px 6px", color: "var(--text-dim)", textAlign: "right" }}>{l.diasVencimiento}</td>
-                        <td style={{ padding: "3px 6px", color: "var(--text)", textAlign: "right" }}>{l.precio != null ? fmtNum(l.precio, 2) : "—"}</td>
-                        <td style={{ padding: "3px 6px", color: "#FFD700", textAlign: "right", fontWeight: 700 }}>{l.tem != null ? fmtPct(l.tem) : "—"}</td>
-                        <td style={{ padding: "3px 6px", color: "var(--text-dim)", textAlign: "right" }}>{l.tea != null ? fmtPct(l.tea) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CapPanel
+          selectedTicker={selected?.type === "cap" ? selected.ticker : null}
+          onSelect={(ticker) => setSelected(prev => prev?.type === "cap" && prev.ticker === ticker ? null : { type: "cap", ticker })}
+        />
       )}
 
       {(tab === "cer" || tab === "dual") && (() => {
@@ -897,10 +850,10 @@ function BonoDetailPanel({ assetType, ticker, bono, onClose }: {
           bono ? (
             <div style={{ display: "flex", gap: 1, flexWrap: "wrap", background: "var(--bg-elev-2)", padding: 1 }}>
               <KPI label="Precio" value={fmtNum(bono.precio, 2)} unit="USD" />
-              <KPI label="TIR" value={bono.tir != null ? fmtPct(bono.tir) : null} valueColor="var(--amber)" />
-              <KPI label="Paridad" value={bono.paridad != null ? fmtPct(bono.paridad) : null} />
-              <KPI label="Curr. Yield" value={bono.currentYield != null ? fmtPct(bono.currentYield) : null} />
-              <KPI label="Dur. Mod" value={bono.durationMod != null ? fmtNum(bono.durationMod, 2) : null} unit="años" />
+              <KPI label="TIR" termId="TIR" value={bono.tir != null ? fmtPct(bono.tir) : null} valueColor="var(--amber)" />
+              <KPI label="Paridad" termId="PARIDAD" value={bono.paridad != null ? fmtPct(bono.paridad) : null} />
+              <KPI label="Curr. Yield" termId="YTM" value={bono.currentYield != null ? fmtPct(bono.currentYield) : null} />
+              <KPI label="Dur. Mod" termId="DURATION" value={bono.durationMod != null ? fmtNum(bono.durationMod, 2) : null} unit="años" />
               <KPI label="Cupón" value={fmtPct(bono.cupon)} unit="s.a." />
               <KPI label="Vencimiento" value={bono.vencimiento?.slice(0, 10) ?? null} />
               <KPI label="VN Residual" value={fmtNum(bono.vnResidual, 2)} unit="% orig" />
@@ -987,12 +940,12 @@ export function RofexView() {
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 1, padding: "12px 14px", background: "var(--bg)", borderBottom: "1px solid var(--bg-elev-2)" }}>
-        <KPI label="Posiciones activas" value={String(data.length)} unit="contratos en el mercado" />
+        <KPI label="Posiciones activas" termId="ROFEX" value={String(data.length)} unit="contratos en el mercado" />
         <KPI label="Posición más cercana" value={nearFuture?.maturityLabel ?? null} valueColor="var(--amber)"
           unit={nearFuture ? `$${fmtNum(nearFuture.price, 2)} · Dev: ${fmtPct(nearFuture.devaluation)}` : undefined} />
         <KPI label="Posición más lejana" value={farFuture?.maturityLabel ?? null} valueColor="var(--positive)"
           unit={farFuture ? `$${fmtNum(farFuture.price, 2)} · Dev: ${fmtPct(farFuture.devaluation)}` : undefined} />
-        <KPI label="Devaluación máxima impl." value={fmtPct(maxDev)} valueColor="#FF6B6B" unit="según ROFEX" />
+        <KPI label="Devaluación máxima impl." termId="DEV. IMP." value={fmtPct(maxDev)} valueColor="#FF6B6B" unit="según ROFEX" />
       </div>
 
       {/* Charts */}
@@ -1093,11 +1046,11 @@ export function PlazoFijoOficialView() {
 
   if (loading) return <Loading />
 
-  const series = [
-    { key: "tamar", label: "TAMAR privados", color: "var(--amber)", points: data?.tamar ?? [] },
-    { key: "badlar", label: "BADLAR privados", color: "var(--positive)", points: data?.badlar ?? [] },
-    { key: "tm20", label: "TM20 privados", color: "var(--sky)", points: data?.tm20 ?? [] },
-    { key: "pf30", label: "Depósitos 30 días", color: "#CE93D8", points: data?.pf30 ?? [] },
+  const series: { key: string; label: string; color: string; termId?: string; points: { fecha: string; valor: number }[] }[] = [
+    { key: "tamar", label: "TAMAR privados", color: "var(--amber)", termId: "TAMAR", points: data?.tamar ?? [] },
+    { key: "badlar", label: "BADLAR privados", color: "var(--positive)", termId: "BADLAR", points: data?.badlar ?? [] },
+    { key: "tm20", label: "TM20 privados", color: "var(--sky)", termId: "TM20", points: data?.tm20 ?? [] },
+    { key: "pf30", label: "Depósitos 30 días", color: "#CE93D8", termId: "TASA PLAZO FIJO", points: data?.pf30 ?? [] },
   ].filter(item => item.points.length > 0)
 
   if (series.length === 0) {
@@ -1116,7 +1069,7 @@ export function PlazoFijoOficialView() {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 1, padding: "12px 14px", background: "var(--bg)", borderBottom: "1px solid var(--bg-elev-2)" }}>
         {series.map(item => {
           const latest = item.points.at(-1)
-          return <KPI key={item.key} label={item.label} value={latest ? `${fmtNum(latest.valor)}%` : null} valueColor={item.color} unit={latest ? `TNA · ${latest.fecha}` : "TNA"} />
+          return <KPI key={item.key} label={item.label} termId={item.termId} value={latest ? `${fmtNum(latest.valor)}%` : null} valueColor={item.color} unit={latest ? `TNA · ${latest.fecha}` : "TNA"} />
         })}
       </div>
       <div style={{ padding: 16, background: "var(--bg)" }}>
@@ -1182,10 +1135,10 @@ function AgregadosView() {
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 1, padding: "12px 14px", background: "var(--bg)", borderBottom: "1px solid var(--bg-elev-2)" }}>
-        <KPI label="Base Monetaria" value={lastBM != null ? `$${fmtNum(lastBM / 1000, 0)}B` : null} valueColor="#FF6B6B" unit="millones ARS" />
-        <KPI label="M1" value={lastM1 != null ? `$${fmtNum(lastM1 / 1000, 0)}B` : null} valueColor="var(--amber)" unit="billetes + cuentas corrientes" />
-        <KPI label="M2" value={lastM2 != null ? `$${fmtNum(lastM2 / 1000, 0)}B` : null} valueColor="var(--positive)" unit="M1 + cajas de ahorro" />
-        {lastM1 && lastM2 && <KPI label="Cuasidinero" value={`$${fmtNum((lastM2 - lastM1) / 1000, 0)}B`} valueColor="#CE93D8" unit="M2 - M1" />}
+        <KPI label="Base Monetaria" termId="BASE MONETARIA" value={lastBM != null ? `$${fmtNum(lastBM / 1000, 0)}B` : null} valueColor="#FF6B6B" unit="millones ARS" />
+        <KPI label="M1" termId="DEPOSITOS CC" value={lastM1 != null ? `$${fmtNum(lastM1 / 1000, 0)}B` : null} valueColor="var(--amber)" unit="billetes + cuentas corrientes" />
+        <KPI label="M2" termId="M2" value={lastM2 != null ? `$${fmtNum(lastM2 / 1000, 0)}B` : null} valueColor="var(--positive)" unit="M1 + cajas de ahorro" />
+        {lastM1 && lastM2 && <KPI label="Cuasidinero" termId="M3" value={`$${fmtNum((lastM2 - lastM1) / 1000, 0)}B`} valueColor="#CE93D8" unit="M2 - M1" />}
       </div>
 
       {/* Chart */}
@@ -1500,8 +1453,8 @@ export function CommoditiesView() {
                   </div>
                   <div style={{ fontSize: 8, color: "var(--text-dim)", marginTop: 1 }}>{g.unidad}</div>
                   {g.fobOficial != null && (
-                    <div style={{ fontSize: 8, color: "var(--text-dim)", marginTop: 2 }}>
-                      FOB: ${fmtUSD(g.fobOficial, 0)} · Ret: {g.retencion}%
+                    <div style={{ fontSize: 8, color: "var(--text-dim)", marginTop: 2, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+                      FOB<InfoTooltip termId="FOB" position="bottom" />: ${fmtUSD(g.fobOficial, 0)} · Ret<InfoTooltip termId="RETENCIONES" position="bottom" />: {g.retencion}%
                     </div>
                   )}
                 </div>

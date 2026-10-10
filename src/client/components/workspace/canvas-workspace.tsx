@@ -1,7 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout"
+import { transformStrategy } from "react-grid-layout/core"
 import { Copy, GripHorizontal, LayoutGrid, MessageCircle, Minimize2, Plus, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/client/components/ui/button"
 import { CardDiscussionProvider } from "@/client/components/ui/card-discussion-context"
@@ -67,16 +69,33 @@ function uid(prefix: string) {
   return `${prefix}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now().toString(36)}`
 }
 
+
+/** Factor de `zoom` con que globals.css escala la app (--app-zoom). 1 si no hay. */
+function leerZoomApp(): number {
+  if (typeof window === "undefined") return 1
+  const valor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--app-zoom"))
+  return Number.isFinite(valor) && valor > 0 ? valor : 1
+}
+
 export function CanvasWorkspace() {
   const [canvasState, dispatch] = useReducer(canvasReducer, undefined, createInitialCanvasState)
   const { sheets, activeId } = canvasState
   const [catalogOpen, setCatalogOpen] = useState(true)
+  const [catalogOverlay, setCatalogOverlay] = useState(false)
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState<CardCategory | "all">("all")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [chatWidgetId, setChatWidgetId] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const { width, containerRef, mounted } = useContainerWidth()
+  // La app entera se escala con `zoom` (globals.css, --app-zoom) y la grilla
+  // mide el arrastre en px de pantalla: sin esta escala, una tarjeta se movía
+  // 1,25 veces lo que se movía el mouse y se escapaba del cursor.
+  // createScaledStrategy no sirve acá: su calcDragPosition toma la posición
+  // relativa a la ventana y no al contenedor, y la tarjeta salta el ancho de la
+  // barra lateral. Alcanza con la estrategia default y la escala corregida.
+  const [appZoom] = useState(leerZoomApp)
+  const positionStrategy = useMemo(() => ({ ...transformStrategy, scale: appZoom }), [appZoom])
 
   useEffect(() => {
     dispatch({ type: "hydrate", state: readCanvasState(localStorage) })
@@ -84,7 +103,12 @@ export function CanvasWorkspace() {
   }, [])
 
   useEffect(() => {
-    if (window.matchMedia("(max-width: 1023px)").matches) setCatalogOpen(false)
+    const media = window.matchMedia("(max-width: 1023px)")
+    const updateOverlay = () => setCatalogOverlay(media.matches)
+    updateOverlay()
+    if (media.matches) setCatalogOpen(false)
+    media.addEventListener("change", updateOverlay)
+    return () => media.removeEventListener("change", updateOverlay)
   }, [])
 
   useEffect(() => {
@@ -102,7 +126,7 @@ export function CanvasWorkspace() {
   // The catalog is a fixed 20rem desktop rail. Clamp the first grid render to
   // the available viewport while the ResizeObserver settles after opening it.
   const gridWidth = catalogOpen && !compactLayout && typeof window !== "undefined"
-    ? Math.min(width, Math.max(0, window.innerWidth - CANVAS_CATALOG_RAIL_PX - CANVAS_CONTENT_GUTTER_PX))
+    ? Math.min(width, Math.max(0, window.innerWidth / appZoom - CANVAS_CATALOG_RAIL_PX - CANVAS_CONTENT_GUTTER_PX))
     : width
 
   const updateActiveWidgets = useCallback((updater: (widgets: CanvasWidget[]) => CanvasWidget[]) => {
@@ -149,8 +173,50 @@ export function CanvasWorkspace() {
 
   const layout: Layout = buildCanvasLayout(activeSheet.widgets, compactLayout, DATA_CARD_BY_ID)
 
+  // A body portal keeps the zoomed fixed overlay independent of the flex rail.
+  const catalogPanel = (
+          <aside style={catalogOverlay ? {
+            position: "fixed",
+            left: "max(0px, calc(100vw / var(--app-zoom) - 20rem))",
+            width: "20rem",
+            maxWidth: "calc(100vw / var(--app-zoom))",
+          } : undefined} className="sticky top-24 z-[70] h-[calc(var(--app-vh)_-_6rem)] w-80 max-w-full shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--bg-elev)]">
+            <div className="border-b border-[var(--border)] p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-[var(--text-mute)]" />
+                  <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarjeta…" className="pl-9" />
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setCatalogOpen(false)} className="h-9 w-9 text-[var(--text-dim)]"><X size={15} /></Button>
+              </div>
+              <div className="flex gap-1 overflow-x-auto pb-1">
+                <button onClick={() => setCategory("all")} className={cn("rounded-full border px-2 py-1 text-[9px] uppercase tracking-wide", category === "all" ? "border-[var(--amber)] text-[var(--amber)]" : "border-[var(--border)] text-[var(--text-dim)]")}>Todas</button>
+                {CARD_CATEGORIES.map((item) => (
+                  <button key={item.id} onClick={() => setCategory(item.id)} className={cn("rounded-full border px-2 py-1 text-[9px] uppercase tracking-wide", category === item.id ? "border-[var(--amber)] text-[var(--amber)]" : "border-[var(--border)] text-[var(--text-dim)]")}>{item.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="h-[calc(100%-6.5rem)] overflow-y-auto p-2">
+              <div className="px-2 py-1 text-[10px] text-[var(--text-mute)]">{results.length} tarjetas programables</div>
+              {results.map((definition) => (
+                <div key={definition.id} className="group mb-1 rounded-md border border-transparent p-2 hover:border-[var(--border)] hover:bg-[var(--bg-elev-2)]">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium text-[var(--text)]">{definition.title}</div>
+                      <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--text-dim)]">{definition.description}</div>
+                      <div className="mt-2 flex items-center gap-2"><CardHealthBadge cardId={definition.id} compact auto={false} /><span className="font-mono text-[9px] text-[var(--text-mute)]">{definition.endpoints.length} endpoint{definition.endpoints.length === 1 ? "" : "s"}</span></div>
+                    </div>
+                    <Button variant="outline" size="icon" onClick={() => addWidget(definition.id)} className="h-8 w-8 shrink-0 border-[var(--border)] bg-[var(--bg-elev)] text-[var(--amber)]" title={`Agregar ${definition.title}`}><Plus size={14} /></Button>
+                  </div>
+                </div>
+              ))}
+              {results.length === 0 && <div className="p-6 text-center text-xs text-[var(--text-dim)]">No hay tarjetas para esa búsqueda.</div>}
+            </div>
+          </aside>
+  )
+
   return (
-    <div className="min-h-[calc(100vh-49px)] bg-[var(--bg)]">
+    <div className="min-h-[calc(var(--app-vh)_-_49px)] bg-[var(--bg)]">
       <div className="sticky top-12 z-[65] flex min-h-12 items-center gap-2 border-b border-[var(--border)] bg-[color:var(--bg-elev)]/95 px-3 backdrop-blur">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1">
           {sheets.map((sheet) => (
@@ -202,6 +268,7 @@ export function CanvasWorkspace() {
             <GridLayout
               width={gridWidth}
               layout={layout}
+              positionStrategy={positionStrategy}
               gridConfig={{ cols: compactLayout ? 1 : 12, rowHeight: GRID_ROW_HEIGHT, margin: [10, GRID_ROW_GAP], containerPadding: [0, 0] }}
               dragConfig={{ enabled: !compactLayout, handle: ".canvas-card-handle", cancel: ".canvas-card-interactive" }}
               resizeConfig={{ enabled: !compactLayout, handles: ["se"] }}
@@ -263,41 +330,7 @@ export function CanvasWorkspace() {
           )}
         </section>
 
-        {catalogOpen && (
-          <aside className="sticky top-24 z-[70] h-[calc(100vh-6rem)] w-80 max-w-full shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--bg-elev)] max-lg:fixed max-lg:right-0">
-            <div className="border-b border-[var(--border)] p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-[var(--text-mute)]" />
-                  <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarjeta…" className="pl-9" />
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setCatalogOpen(false)} className="h-9 w-9 text-[var(--text-dim)]"><X size={15} /></Button>
-              </div>
-              <div className="flex gap-1 overflow-x-auto pb-1">
-                <button onClick={() => setCategory("all")} className={cn("rounded-full border px-2 py-1 text-[9px] uppercase tracking-wide", category === "all" ? "border-[var(--amber)] text-[var(--amber)]" : "border-[var(--border)] text-[var(--text-dim)]")}>Todas</button>
-                {CARD_CATEGORIES.map((item) => (
-                  <button key={item.id} onClick={() => setCategory(item.id)} className={cn("rounded-full border px-2 py-1 text-[9px] uppercase tracking-wide", category === item.id ? "border-[var(--amber)] text-[var(--amber)]" : "border-[var(--border)] text-[var(--text-dim)]")}>{item.label}</button>
-                ))}
-              </div>
-            </div>
-            <div className="h-[calc(100%-6.5rem)] overflow-y-auto p-2">
-              <div className="px-2 py-1 text-[10px] text-[var(--text-mute)]">{results.length} tarjetas programables</div>
-              {results.map((definition) => (
-                <div key={definition.id} className="group mb-1 rounded-md border border-transparent p-2 hover:border-[var(--border)] hover:bg-[var(--bg-elev-2)]">
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-medium text-[var(--text)]">{definition.title}</div>
-                      <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--text-dim)]">{definition.description}</div>
-                      <div className="mt-2 flex items-center gap-2"><CardHealthBadge cardId={definition.id} compact auto={false} /><span className="font-mono text-[9px] text-[var(--text-mute)]">{definition.endpoints.length} endpoint{definition.endpoints.length === 1 ? "" : "s"}</span></div>
-                    </div>
-                    <Button variant="outline" size="icon" onClick={() => addWidget(definition.id)} className="h-8 w-8 shrink-0 border-[var(--border)] bg-[var(--bg-elev)] text-[var(--amber)]" title={`Agregar ${definition.title}`}><Plus size={14} /></Button>
-                  </div>
-                </div>
-              ))}
-              {results.length === 0 && <div className="p-6 text-center text-xs text-[var(--text-dim)]">No hay tarjetas para esa búsqueda.</div>}
-            </div>
-          </aside>
-        )}
+        {catalogOpen && (catalogOverlay ? createPortal(catalogPanel, document.body) : catalogPanel)}
       </div>
     </div>
   )

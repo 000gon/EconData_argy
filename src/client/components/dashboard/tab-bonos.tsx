@@ -19,13 +19,14 @@ import {
 } from "recharts"
 import type { TooltipContentProps } from "recharts"
 import { InfoTooltip } from "@/client/components/ui/info-tooltip"
-import { GLOSSARY } from "@/lib/glossary"
 import { buildSovereignCurve, type SovereignCurveInput } from "@/lib/sovereign-curve"
 import { useTickerNav } from "@/lib/ticker-nav"
 import { WATCHLIST_EVENT, readWatchlist, toggleWatchlistId } from "@/lib/watchlist"
 import { construirCashflows, ESQUEMAS } from "@/lib/bond-schedule"
 import { metricasDeMercado } from "@/lib/bond-math"
 import { fechaUTC, siguienteDiaHabil } from "@/lib/market-calendar"
+import { BOND_OUTSTANDING } from "@/lib/bond-outstanding"
+import { CapPanel } from "./cap-panel"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,16 +60,6 @@ interface SovereignBond {
   dataQuality?: string | null
 }
 
-interface CapInstrument {
-  ticker: string
-  tipo: string
-  vencimiento: string
-  diasVencimiento: number
-  precio: number | null
-  tir: number | null
-  tea: number | null
-  tem: number | null
-}
 
 interface RiesgoPaisData {
   actual: {
@@ -86,12 +77,9 @@ interface RiesgoPaisData {
   alertas: { nivel: string; mensaje: string }[]
 }
 
-// Outstanding estimado en billones USD
-const OUTSTANDING: Record<string, number> = {
-  GD35: 14.79, GD30: 12.65, AL30: 12.15, GD41: 11.15,
-  AL35: 10.27, GD46: 8.04, AL29: 7.61, AE38: 4.57, GD38: 6.0,
-  AO27: 1.5, AO28: 2.0, AO29: 2.5,
-}
+// Outstanding en miles de millones USD — la constante vive en
+// @/lib/bond-outstanding y se importa arriba (BOND_OUTSTANDING) para que
+// este componente y /api/riesgo-pais lean exactamente el mismo número.
 
 // Orden de display por familia
 const GLOBALES_ORDER = ["GD29", "GD30", "GD35", "GD38", "GD41", "GD46"]
@@ -164,9 +152,9 @@ function SubTabs({ tabs, active, onChange }: { tabs: { key: string; label: strin
 function weightedAvgTEA(bonds: SovereignBond[]): number | null {
   const valid = bonds.filter((b) => b.teaMep != null)
   if (valid.length === 0) return null
-  const totalOut = valid.reduce((s, b) => s + (OUTSTANDING[b.ticker] ?? 0), 0)
+  const totalOut = valid.reduce((s, b) => s + (BOND_OUTSTANDING[b.ticker] ?? 0), 0)
   if (totalOut === 0) return null
-  return valid.reduce((s, b) => s + (b.teaMep! * (OUTSTANDING[b.ticker] ?? 0)), 0) / totalOut
+  return valid.reduce((s, b) => s + (b.teaMep! * (BOND_OUTSTANDING[b.ticker] ?? 0)), 0) / totalOut
 }
 
 // Canje MEP/CCL = px cable / px mep. Se muestra como ratio (ej. 0.978).
@@ -375,10 +363,23 @@ function BondTable({ title, color, bonds, order, liquidacion, pinnedTickers, onT
     return [...bonds].sort((a, b) => (idx.get(a.ticker) ?? 999) - (idx.get(b.ticker) ?? 999))
   }, [bonds, order])
 
-  const totalOut = bonds.reduce((s, b) => s + (OUTSTANDING[b.ticker] ?? 0), 0)
+  const totalOut = bonds.reduce((s, b) => s + (BOND_OUTSTANDING[b.ticker] ?? 0), 0)
   const wavgTea = weightedAvgTEA(bonds)
 
-  const COL_HEADERS = ["", "Ticker", "Px Dirty", "Var %", "TNA MEP", "TNA CCL", "TEA MEP", "TEA CCL", "Dur.", "Paridad", "Canje"]
+  // Cada header puede tener un termId opcional que muestra el tooltip educativo.
+  const COL_HEADERS: { label: string; termId?: string }[] = [
+    { label: "" },
+    { label: "Ticker" },
+    { label: "Px Dirty" },
+    { label: "Var %" },
+    { label: "TNA MEP", termId: "TNA" },
+    { label: "TNA CCL", termId: "CCL" },
+    { label: "TEA MEP", termId: "TEA" },
+    { label: "TEA CCL", termId: "TEA" },
+    { label: "Dur.", termId: "DURATION" },
+    { label: "Paridad", termId: "PARIDAD" },
+    { label: "Canje" },
+  ]
 
   return (
     <div style={{ marginBottom: 1 }}>
@@ -405,7 +406,12 @@ function BondTable({ title, color, bonds, order, liquidacion, pinnedTickers, onT
                   textAlign: i <= 1 ? "left" : "right",
                   textTransform: "uppercase", letterSpacing: 0.5,
                   whiteSpace: "nowrap",
-                }}>{h}</th>
+                }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: i <= 1 ? "flex-start" : "flex-end", gap: 2, width: "100%" }}>
+                    {h.label}
+                    {h.termId && <InfoTooltip termId={h.termId} position="bottom" />}
+                  </span>
+                </th>
               ))}
             </tr>
           </thead>
@@ -531,8 +537,10 @@ function CurveTooltip({ active, payload }: any) {
       {d.fittedYtm != null && (
         <>
           <div style={{ color: "var(--text-dim)" }}>YTM curva: {d.fittedYtm.toFixed(2)}%</div>
-          <div style={{ color: d.residualBps! > 5 ? "var(--positive)" : d.residualBps! < -5 ? "var(--negative)" : "var(--text-dim)" }}>
-            Residual: {d.residualBps! > 0 ? "+" : ""}{d.residualBps!.toFixed(0)} bp · {d.valuation === "en_curva" ? "en curva" : d.valuation}
+          <div style={{ color: "var(--text)" }}>
+            {Math.round(d.residualBps!) === 0
+              ? "= en la curva"
+              : `${d.residualBps! > 0 ? "▲" : "▼"} ${Math.abs(Math.round(d.residualBps!))} bp ${d.residualBps! > 0 ? "sobre" : "bajo"} la curva`}
           </div>
         </>
       )}
@@ -596,7 +604,7 @@ function SovereignCurve({ bonds }: { bonds: SovereignBond[] }) {
   return (
     <div style={{ background: "var(--bg-elev)", border: "1px solid var(--border)", padding: "12px 4px 8px 0" }}>
       <div style={{ padding: "0 12px 8px", fontSize: 9, color: "var(--text-dim)" }}>
-        Curvas soberanas separadas por ley — YTM (%) vs Duration Modificada (años). La recta es el ajuste de cada ley; el residual compara sólo bonos de esa ley: YTM por encima = barato; por debajo = caro.
+        Curvas soberanas separadas por ley — YTM (%) vs Duration Modificada (años). La recta es el ajuste de cada ley; el residual compara sólo bonos de esa ley, en bp de YTM: ▲ por encima de la curva, ▼ por debajo.
       </div>
       <ResponsiveContainer width="100%" height={340}>
         <ScatterChart margin={{ top: 8, right: 48, left: 0, bottom: 16 }}>
@@ -652,13 +660,15 @@ function SovereignCurve({ bonds }: { bonds: SovereignBond[] }) {
                 Ley {law === "NY" ? "Nueva York" : "Local"}
               </div>
               {hasReference ? points.map((point) => {
-                const residual = point.residualBps ?? 0
-                const color = residual > 5 ? "var(--positive)" : residual < -5 ? "var(--negative)" : "var(--text-dim)"
-                const label = point.valuation === "en_curva" ? "en curva" : point.valuation
+                // Sin barato/caro ni verde/rojo: se muestra la diferencia, no
+                // una recomendación.
+                const residual = Math.round(point.residualBps ?? 0)
                 return (
                   <div key={point.ticker} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, lineHeight: "18px" }}>
                     <span style={{ color: "var(--text)" }}>{point.ticker}</span>
-                    <span style={{ color, fontFamily: "var(--font-data)" }}>{residual > 0 ? "+" : ""}{residual.toFixed(0)} bp · {label}</span>
+                    <span style={{ color: "var(--text)", fontFamily: "var(--font-data)" }}>
+                      {residual === 0 ? "= en la curva" : `${residual > 0 ? "▲ +" : "▼ "}${residual} bp`}
+                    </span>
                   </div>
                 )
               }) : (
@@ -679,11 +689,11 @@ function SovereignCurve({ bonds }: { bonds: SovereignBond[] }) {
 
 // ── Bond Heatmap ──────────────────────────────────────────────────────────────
 function BondHeatmap({ bonds }: { bonds: SovereignBond[] }) {
-  const totalOut = bonds.reduce((s, b) => s + (OUTSTANDING[b.ticker] ?? 0), 0)
+  const totalOut = bonds.reduce((s, b) => s + (BOND_OUTSTANDING[b.ticker] ?? 0), 0)
 
   const blocks = bonds
-    .filter((b) => (OUTSTANDING[b.ticker] ?? 0) > 0)
-    .sort((a, b) => (OUTSTANDING[b.ticker] ?? 0) - (OUTSTANDING[a.ticker] ?? 0))
+    .filter((b) => (BOND_OUTSTANDING[b.ticker] ?? 0) > 0)
+    .sort((a, b) => (BOND_OUTSTANDING[b.ticker] ?? 0) - (BOND_OUTSTANDING[a.ticker] ?? 0))
 
   function blockColor(change: number | null | undefined): string {
     if (change == null) return "var(--border)"
@@ -708,7 +718,7 @@ function BondHeatmap({ bonds }: { bonds: SovereignBond[] }) {
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 1, padding: "0 1px 1px" }}>
         {blocks.map((bond) => {
-          const out = OUTSTANDING[bond.ticker] ?? 0
+          const out = BOND_OUTSTANDING[bond.ticker] ?? 0
           const pct = totalOut > 0 ? (out / totalOut) : 0
           const minWidth = Math.max(80, Math.floor(pct * 600))
 
@@ -744,76 +754,6 @@ function BondHeatmap({ bonds }: { bonds: SovereignBond[] }) {
       </div>
       <div style={{ padding: "4px 8px", fontSize: 9, color: "var(--text-mute)", borderTop: "1px solid var(--bg-elev-2)" }}>
         Outstanding: fuentes MECON · Variaciones: cierre anterior vs último precio
-      </div>
-    </div>
-  )
-}
-
-// ── LECAPs Screener ────────────────────────────────────────────────────────────
-function LecapsScreener() {
-  const [instrumentos, setInstrumentos] = useState<CapInstrument[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetch("/api/bonos?tipo=lecap")
-      .then((r) => r.json())
-      .then((j) => { setInstrumentos(j.data ?? []); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [])
-
-  if (loading) return <div style={{ padding: 16, color: "var(--text-dim)", fontSize: 11 }}>Cargando LECAPs...</div>
-
-  const lecaps = instrumentos.filter((i) => i.tipo === "LECAP")
-  const boncaps = instrumentos.filter((i) => i.tipo === "BONCAP")
-
-  const Section = ({ title, items }: { title: string; items: CapInstrument[] }) => (
-    <div style={{ marginBottom: 1 }}>
-      <div style={{ padding: "3px 8px", background: "var(--bg-elev-2)", fontSize: 9, color: "var(--amber)", textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid var(--bg-elev-2)" }}>
-        {title}
-      </div>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {["Ticker", "Vencimiento", "Días", "Precio", "TEM", "TEA", "TIR anual"].map((h, i) => (
-              <th key={h} style={{ padding: "4px 8px", fontSize: 9, color: "var(--text-dim)", textAlign: i === 0 ? "left" : "right", borderBottom: "1px solid var(--border)" }}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((inst, i) => (
-            <tr key={inst.ticker} style={{ background: i % 2 === 0 ? "var(--bg)" : "var(--bg-row-alt)" }}>
-              <td style={{ padding: "5px 8px", fontSize: 12, fontWeight: 700, color: "var(--amber)" }}>{inst.ticker}</td>
-              <td style={{ padding: "5px 8px", fontSize: 10, color: "var(--text-mute)", textAlign: "right" }}>{inst.vencimiento}</td>
-              <td style={{ padding: "5px 8px", fontSize: 11, color: inst.diasVencimiento < 30 ? "var(--negative)" : inst.diasVencimiento < 90 ? "var(--amber)" : "#ccc", textAlign: "right", fontFamily: "var(--font-data)" }}>
-                {inst.diasVencimiento}
-              </td>
-              <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text)", textAlign: "right", fontFamily: "var(--font-data)" }}>
-                {inst.precio != null ? inst.precio.toFixed(2) : "—"}
-              </td>
-              <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--positive)", textAlign: "right", fontFamily: "var(--font-data)" }}>
-                {inst.tem != null ? inst.tem.toFixed(2) + "%" : "—"}
-              </td>
-              <td style={{ padding: "5px 8px", fontSize: 11, color: "#FFD700", textAlign: "right", fontFamily: "var(--font-data)" }}>
-                {inst.tea != null ? inst.tea.toFixed(2) + "%" : "—"}
-              </td>
-              <td style={{ padding: "5px 8px", fontSize: 12, fontWeight: 700, color: tirColor(inst.tir), textAlign: "right", fontFamily: "var(--font-data)" }}>
-                {inst.tir != null ? inst.tir.toFixed(2) + "%" : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-
-  return (
-    <div>
-      <Section title="LECAPs — Letras del Tesoro Capitalizables" items={lecaps} />
-      <Section title="BONCAPs — Bonos del Tesoro Capitalizables" items={boncaps} />
-      <div style={{ padding: "4px 8px", fontSize: 9, color: "var(--text-mute)", borderTop: "1px solid var(--bg-elev-2)" }}>
-        Precios: actualización diaria via ByMA · Ordenados por vencimiento · TIR: compuesto continuo vs VN
       </div>
     </div>
   )
@@ -903,7 +843,7 @@ function RiesgoPaisView() {
       {/* KPI strip */}
       <div style={{ display: "flex", gap: 1, background: "var(--bg-elev-2)", padding: 1, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 180px", background: "var(--bg-elev)", border: "1px solid var(--border)", padding: "14px 16px" }}>
-          <div style={{ fontSize: 9, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, display: "flex", alignItems: "center", gap: 2 }}>Riesgo País EMBI+<InfoTooltip text={GLOSSARY["RIESGO PAÍS"].text} source={GLOSSARY["RIESGO PAÍS"].source} url={GLOSSARY["RIESGO PAÍS"].url} position="bottom" /></div>
+          <div style={{ fontSize: 9, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, display: "flex", alignItems: "center", gap: 2 }}>Riesgo País EMBI+<InfoTooltip termId="RIESGO PAÍS" position="bottom" /></div>
           <div style={{ fontSize: 36, fontWeight: 700, color, fontFamily: "var(--font-data)" }}>
             {bps != null ? bps.toLocaleString("es-AR") : "—"}
           </div>
@@ -922,13 +862,13 @@ function RiesgoPaisView() {
           </div>
         </div>
         <div style={{ flex: "1 1 120px", background: "var(--bg-elev)", border: "1px solid var(--border)", padding: "14px 16px" }}>
-          <div style={{ fontSize: 9, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, display: "flex", alignItems: "center", gap: 2 }}>US 10Y<InfoTooltip text={GLOSSARY["US 10Y"].text} source={GLOSSARY["US 10Y"].source} url={GLOSSARY["US 10Y"].url} position="bottom" /></div>
+          <div style={{ fontSize: 9, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, display: "flex", alignItems: "center", gap: 2 }}>US 10Y<InfoTooltip termId="US 10Y" position="bottom" /></div>
           <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-data)", color: "var(--text-dim)" }}>
             {data?.actual?.us10y != null ? data.actual.us10y.toFixed(2) + "%" : "—"}
           </div>
         </div>
         <div style={{ flex: "1 1 120px", background: "var(--bg-elev)", border: "1px solid var(--border)", padding: "14px 16px" }}>
-          <div style={{ fontSize: 9, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, display: "flex", alignItems: "center", gap: 2 }}>TIR GD30<InfoTooltip text={GLOSSARY["TIR"].text} source={GLOSSARY["TIR"].source} url={GLOSSARY["TIR"].url} position="bottom" /></div>
+          <div style={{ fontSize: 9, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, display: "flex", alignItems: "center", gap: 2 }}>TIR <InfoTooltip termId="TIR" position="bottom" /> GD30 <InfoTooltip termId="GD30" position="bottom" /></div>
           <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-data)", color: "var(--amber)" }}>
             {data?.actual?.arTir != null ? data.actual.arTir.toFixed(2) + "%" : "—"}
           </div>
@@ -1066,11 +1006,11 @@ export function TabBonos() {
 
       setBonds(rawBonds.map((b) => ({
         ...b,
-        outstanding: OUTSTANDING[b.ticker],
+        outstanding: BOND_OUTSTANDING[b.ticker],
       })))
     } catch {
       const j = await fetch("/api/bonos").then((r) => r.json()).catch(() => ({ data: [] }))
-      setBonds((j.data ?? []).map((b: SovereignBond) => ({ ...b, outstanding: OUTSTANDING[b.ticker] })))
+      setBonds((j.data ?? []).map((b: SovereignBond) => ({ ...b, outstanding: BOND_OUTSTANDING[b.ticker] })))
       if (!(j.data ?? []).length) setLoadError("no se pudieron cargar bonos desde el backend")
     } finally {
       setLoading(false)
@@ -1120,7 +1060,7 @@ export function TabBonos() {
       {activeTab === "snapshot" && <SnapshotView bonds={bonds} />}
       {activeTab === "curva" && <SovereignCurve bonds={bonds} />}
       {activeTab === "heatmap" && <BondHeatmap bonds={bonds} />}
-      {activeTab === "lecaps" && <LecapsScreener />}
+      {activeTab === "lecaps" && <CapPanel />}
       {activeTab === "riesgo" && <RiesgoPaisView />}
     </div>
   )
