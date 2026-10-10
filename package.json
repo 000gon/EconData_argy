@@ -25,7 +25,6 @@
     "test:rofex-rava": "tsx --test tests/rofex-rava.test.ts",
     "test:inequality": "tsx --test tests/inequality-series.test.ts",
     "test:debt-stock": "tsx --test tests/debt-stock.test.ts",
-    "test:fiscal-imig": "tsx --test tests/fiscal-imig.test.ts",
     "test:news-search": "tsx --test tests/news-search.test.ts",
     "test:prediction-contract": "tsx --test tests/prediction-contract.test.ts",
     "test:prediction-resolver": "tsx --test tests/prediction-resolver.test.ts",
@@ -48,6 +47,8 @@
     "test:siia": "tsx --test tests/siia-estimaciones.test.ts",
     "test:clima": "tsx --test tests/clima-campania.test.ts",
     "test:trade-composition": "tsx --test tests/trade-composition.test.ts",
+    "test:clima-regional": "tsx --test tests/clima-regional.test.ts",
+    "test:mapa-vista": "tsx --test tests/mapa-vista.test.ts",
     "smoke:trade-data": "tsx scripts/smoke-trade-integrity.ts",
     "test:calendar": "tsx --test tests/calendar-events.test.ts",
     "test:bond-math": "tsx scripts/verify-bond-math.ts",
@@ -57,7 +58,8 @@
     "test:release-prs": "tsx --test tests/release-prs-48-51.test.ts",
     "test:polymarket": "tsx --test tests/polymarket-parser.test.ts",
     "test:bcra": "tsx --test tests/bcra-banking.test.ts tests/bcra-reserves.test.ts",
-    "scrape": "tsx -e \"import { runAllScrapers } from './src/server/scrapers'; runAllScrapers().then(console.log)\""
+    "scrape": "tsx -e \"import { runAllScrapers } from './src/server/scrapers'; runAllScrapers().then(console.log)\"",
+    "test:fiscal-imig": "tsx --test tests/fiscal-imig.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
