@@ -11,9 +11,8 @@ concurrency:
 
 jobs:
   sync:
-    # This workflow ships with the template, but syncing the canonical repo to
-    # itself is never useful. Forks merge upstream/main into their own main.
-    if: github.repository != 'manuelfsm03/EconData_argy'
+    # Keep the scheduled mirror scoped to the production fork.
+    if: github.repository == '000gon/paneldecontrol'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
