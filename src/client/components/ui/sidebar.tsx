@@ -26,8 +26,12 @@ export function SidebarProvider({ children, defaultOpen = true }: { children: Re
   const toggle = React.useCallback(() => setOpen((value) => !value), [])
 
   React.useEffect(() => {
-    if (window.matchMedia("(max-width: 767px)").matches) setOpen(false)
+    const media = window.matchMedia("(max-width: 767px)")
+    const closeMobileDrawer = () => { if (media.matches) setOpen(false) }
+    closeMobileDrawer()
     setReady(true)
+    media.addEventListener("change", closeMobileDrawer)
+    return () => media.removeEventListener("change", closeMobileDrawer)
   }, [])
 
   return (

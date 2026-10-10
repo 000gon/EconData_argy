@@ -20,7 +20,11 @@ async function assertVisibleAndUnobscured(page, locator, label) {
   const viewport = page.viewportSize()
   assert.ok(box && viewport, `${label} has no layout box`)
   assert.ok(box.width > 0 && box.height > 0, `${label} has no visible area`)
-  assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, `${label} is clipped at ${JSON.stringify(box)} in ${JSON.stringify(viewport)}`)
+  const geometryDetails = await locator.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { position: style.position, left: style.left, right: style.right, width: style.width, maxWidth: style.maxWidth, zoom: getComputedStyle(document.documentElement).zoom, innerWidth: window.innerWidth }
+  })
+  assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, `${label} is clipped at ${JSON.stringify(box)} in ${JSON.stringify(viewport)}; styles=${JSON.stringify(geometryDetails)}`)
   await locator.evaluate((element, name) => {
     const rect = element.getBoundingClientRect()
     // Keep the four probes inside rounded borders; a 2px probe can land on a
