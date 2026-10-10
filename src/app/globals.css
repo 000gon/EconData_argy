@@ -278,3 +278,18 @@ td.num, th.num { text-align: right; }
   from { transform: translate(0, 0) scale(1); }
   to { transform: translate(40px, -30px) scale(1.15); }
 }
+
+
+/* The embedded dashboard has less CSS width at 125% zoom. Keep every
+   navigation tab usable instead of clipping the row inside overflow:hidden. */
+.dashboard-nav { height: 56px; padding: 0 24px; gap: 24px; }
+.dashboard-nav-tabs { display: flex; align-items: stretch; height: 100%; gap: 2px; }
+.dashboard-nav-tab { padding: 0 14px; font-size: 13px; }
+.dashboard-nav-search { width: 280px; }
+@media (max-width: 900px) {
+  .dashboard-nav { height: auto; flex-wrap: wrap; padding: 8px; gap: 8px; }
+  .dashboard-nav-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; height: auto; }
+  .dashboard-nav-tab { justify-content: center; min-width: 0; min-height: 36px; padding: 4px; font-size: 12px; }
+  .dashboard-nav-spacer { display: none; }
+  .dashboard-nav-search { width: 100%; }
+}

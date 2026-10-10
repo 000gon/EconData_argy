@@ -102,11 +102,10 @@ export function Dashboard({ initialTab = "macro", initialSubtab = null, initialT
     <div style={{ background: "var(--bg)", minHeight: "var(--app-vh)", overflowX: "hidden" }}>
       <TickerTape />
 
-      <div style={{
+      <div className="dashboard-nav" style={{
         background: "var(--bg)",
         borderBottom: "1px solid var(--border)",
-        height: 56, display: "flex", alignItems: "center",
-        padding: "0 24px", gap: 24,
+        display: "flex", alignItems: "center",
         position: "sticky", top: embedded ? 48 : 0, zIndex: 50,
       }}>
         {!embedded && (
@@ -130,17 +129,17 @@ export function Dashboard({ initialTab = "macro", initialSubtab = null, initialT
           </>
         )}
 
-        <div style={{ display: "flex", alignItems: "stretch", height: "100%", gap: 2 }}>
+        <div className="dashboard-nav-tabs">
           {MAIN_TABS.map(({ key, label, Icon }) => {
             const active = activeTab === key
             return (
               <button
                 key={key}
+                className="dashboard-nav-tab"
                 onClick={() => setActiveTab(key)}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  padding: "0 14px",
-                  fontSize: 13, fontWeight: active ? 600 : 500,
+                  fontWeight: active ? 600 : 500,
                   color: active ? "var(--text)" : "var(--text-dim)",
                   background: "transparent", border: "none",
                   borderBottom: active ? "2px solid var(--amber)" : "2px solid transparent",
@@ -158,14 +157,15 @@ export function Dashboard({ initialTab = "macro", initialSubtab = null, initialT
           })}
         </div>
 
-        <div style={{ flex: 1 }} />
+        <div className="dashboard-nav-spacer" style={{ flex: 1 }} />
 
         <button
+          className="dashboard-nav-search"
           onClick={() => setSearchOpen(true)}
           title="Buscar indicador (⌘K)"
           style={{
             display: "flex", alignItems: "center", gap: 8,
-            width: 280, height: 34,
+            height: 34,
             background: "var(--bg-elev)", border: "1px solid var(--border)",
             borderRadius: 7, cursor: "text",
             padding: "0 12px", textAlign: "left", flexShrink: 0,
