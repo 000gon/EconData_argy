@@ -160,6 +160,16 @@ export const SOURCE_REGISTRY = {
     healthcheckCredentialQueryParam: "api_key",
     freshness: { warnAfterSeconds: 155 * 86_400, rejectAfterSeconds: 245 * 86_400 },
   }),
+  // API pública de granos.ar (monitor agropecuario argentino). Ellos la ofrecen
+  // para consumo de terceros — CORS abierto, sin key, licencia de uso libre con
+  // atribución (que rendimos en la UI). Pizarra Rosario + diferencial FOB/CBOT.
+  granos_ar: source("granos_ar", {
+    displayName: "granos.ar — API pública",
+    publisher: "granos.ar",
+    host: "granosar.lfcaucino.workers.dev",
+    dataClass: "daily_market",
+    healthcheckPath: "/api/v1/status",
+  }),
   polymarket: source("polymarket", { displayName: "Polymarket Gamma", publisher: "Polymarket", host: "gamma-api.polymarket.com", dataClass: "intraday_market", healthcheckPath: "/markets?limit=1" }),
   huggingface: source("huggingface", { displayName: "Hugging Face Hub", publisher: "Hugging Face", host: "huggingface.co", dataClass: "daily_market", healthcheckPath: "/api/models?limit=1" }),
   coingecko: source("coingecko", { displayName: "CoinGecko", publisher: "CoinGecko", host: "api.coingecko.com", dataClass: "intraday_market", healthcheckPath: "/api/v3/ping" }),
@@ -170,6 +180,8 @@ export const SOURCE_REGISTRY = {
   estadisticas_bcra_legacy: source("estadisticas_bcra_legacy", { displayName: "Estadísticas BCRA legacy", publisher: "BCRA", host: "api.estadisticasbcra.com", dataClass: "official_daily" }),
   dolarsi: source("dolarsi", { displayName: "DolarSi", publisher: "DolarSi", host: "www.dolarsi.com", dataClass: "intraday_market" }),
   population_pyramid: source("population_pyramid", { displayName: "PopulationPyramid.net", publisher: "PopulationPyramid.net", host: "www.populationpyramid.net", kind: "csv", dataClass: "annual" }),
+  cdn_produccion: source("cdn_produccion", { displayName: "CDN Ministerio de Producción", publisher: "Ministerio de Economía / OEDE", host: "cdn.produccion.gob.ar", kind: "csv", dataClass: "official_monthly" }),
+  datos_produccion: source("datos_produccion", { displayName: "datos.produccion.gob.ar", publisher: "Ministerio de Economía", host: "datos.produccion.gob.ar", kind: "csv", dataClass: "official_monthly" }),
   news_rss: source("news_rss", {
     displayName: "Registered news feeds",
     publisher: "Registered publishers",
