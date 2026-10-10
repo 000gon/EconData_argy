@@ -163,7 +163,10 @@ try {
     // mobile overlay and desktop rail, with the global 125% zoom still active.
     for (const size of [{ width: 390, height: 844 }, { width: 1280, height: 800 }, viewport]) {
       await page.setViewportSize({ width: size.width, height: size.height })
-      await waitForStableLayout(page, [catalog], `${viewport.name} resized catalog readiness`)
+      // The sidebar animates its width for 200ms; the grid ResizeObserver
+      // follows that transition independently of the fixed catalog.
+      await page.waitForTimeout(250)
+      await waitForStableLayout(page, [catalog, header, canvasControls, page.locator(".react-grid-layout").first()], `${viewport.name} resized catalog readiness`)
       await assertVisibleAndUnobscured(page, catalog, `${viewport.name} catalog at ${size.width}px`)
       await assertNoHorizontalOverflow(page, `${viewport.name} resized canvas`)
     }
